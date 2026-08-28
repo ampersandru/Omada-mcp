@@ -94,6 +94,29 @@ describe('config', () => {
             expect(config.authMode).toBe('web');
         });
 
+        it('should treat empty string env vars (from docker-compose default expansion) as undefined', () => {
+            const dockerEnv = {
+                OMADA_BASE_URL: 'https://192.168.1.1',
+                OMADA_USERNAME: 'admin',
+                OMADA_PASSWORD: 'secretpassword',
+                OMADA_OMADAC_ID: '',
+                OMADA_SITE_ID: '',
+                OMADA_CLIENT_ID: '',
+                OMADA_CLIENT_SECRET: '',
+                OMADA_TOOL_CATEGORIES: '',
+            };
+
+            const config = loadConfigFromEnv(dockerEnv);
+
+            expect(config.baseUrl).toBe('https://192.168.1.1');
+            expect(config.username).toBe('admin');
+            expect(config.password).toBe('secretpassword');
+            expect(config.omadacId).toBeUndefined();
+            expect(config.siteId).toBeUndefined();
+            expect(config.clientId).toBeUndefined();
+            expect(config.clientSecret).toBeUndefined();
+        });
+
         it('should throw error if both username/password and client credentials are missing', () => {
             const emptyEnv = {
                 OMADA_BASE_URL: 'https://omada.example.com',

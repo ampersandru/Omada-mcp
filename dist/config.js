@@ -357,37 +357,43 @@ const envSchema = z
         path: ['httpAllowedOrigins'],
     };
 });
+function emptyToUndefined(val) {
+    if (val === undefined)
+        return undefined;
+    const trimmed = val.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+}
 export function loadConfigFromEnv(env = process.env) {
     const parsed = envSchema.safeParse({
-        capabilityProfile: env.OMADA_CAPABILITY_PROFILE,
+        capabilityProfile: emptyToUndefined(env.OMADA_CAPABILITY_PROFILE),
         // Tool category filtering
-        toolCategories: env.OMADA_TOOL_CATEGORIES,
+        toolCategories: emptyToUndefined(env.OMADA_TOOL_CATEGORIES),
         // Omada Client Configuration
-        baseUrl: env.OMADA_BASE_URL,
-        authMode: env.OMADA_AUTH_MODE,
-        username: env.OMADA_USERNAME,
-        password: env.OMADA_PASSWORD,
-        clientId: env.OMADA_CLIENT_ID,
-        clientSecret: env.OMADA_CLIENT_SECRET,
-        omadacId: env.OMADA_OMADAC_ID,
-        siteId: env.OMADA_SITE_ID,
-        strictSsl: env.OMADA_STRICT_SSL,
-        requestTimeout: env.OMADA_TIMEOUT,
+        baseUrl: emptyToUndefined(env.OMADA_BASE_URL),
+        authMode: emptyToUndefined(env.OMADA_AUTH_MODE),
+        username: emptyToUndefined(env.OMADA_USERNAME),
+        password: emptyToUndefined(env.OMADA_PASSWORD),
+        clientId: emptyToUndefined(env.OMADA_CLIENT_ID),
+        clientSecret: emptyToUndefined(env.OMADA_CLIENT_SECRET),
+        omadacId: emptyToUndefined(env.OMADA_OMADAC_ID),
+        siteId: emptyToUndefined(env.OMADA_SITE_ID),
+        strictSsl: emptyToUndefined(env.OMADA_STRICT_SSL),
+        requestTimeout: emptyToUndefined(env.OMADA_TIMEOUT),
         // MCP Generic Server Configuration
-        logLevel: env.MCP_SERVER_LOG_LEVEL,
-        logFormat: env.MCP_SERVER_LOG_FORMAT,
-        useHttp: env.MCP_SERVER_USE_HTTP,
-        unsafeEnableHttp: env.MCP_UNSAFE_ENABLE_HTTP,
+        logLevel: emptyToUndefined(env.MCP_SERVER_LOG_LEVEL),
+        logFormat: emptyToUndefined(env.MCP_SERVER_LOG_FORMAT),
+        useHttp: emptyToUndefined(env.MCP_SERVER_USE_HTTP),
+        unsafeEnableHttp: emptyToUndefined(env.MCP_UNSAFE_ENABLE_HTTP),
         // MCP Server HTTP Configuration
-        httpPort: env.MCP_HTTP_PORT,
-        httpBindAddr: env.MCP_HTTP_BIND_ADDR,
-        httpPath: env.MCP_HTTP_PATH,
-        httpEnableHealthcheck: env.MCP_HTTP_ENABLE_HEALTHCHECK,
-        httpHealthcheckPath: env.MCP_HTTP_HEALTHCHECK_PATH,
-        httpAllowCors: env.MCP_HTTP_ALLOW_CORS,
-        httpAllowedOrigins: env.MCP_HTTP_ALLOWED_ORIGINS,
-        httpNgrokEnabled: env.MCP_HTTP_NGROK_ENABLED,
-        httpNgrokAuthToken: env.MCP_HTTP_NGROK_AUTH_TOKEN,
+        httpPort: emptyToUndefined(env.MCP_HTTP_PORT),
+        httpBindAddr: emptyToUndefined(env.MCP_HTTP_BIND_ADDR),
+        httpPath: emptyToUndefined(env.MCP_HTTP_PATH),
+        httpEnableHealthcheck: emptyToUndefined(env.MCP_HTTP_ENABLE_HEALTHCHECK),
+        httpHealthcheckPath: emptyToUndefined(env.MCP_HTTP_HEALTHCHECK_PATH),
+        httpAllowCors: emptyToUndefined(env.MCP_HTTP_ALLOW_CORS),
+        httpAllowedOrigins: emptyToUndefined(env.MCP_HTTP_ALLOWED_ORIGINS),
+        httpNgrokEnabled: emptyToUndefined(env.MCP_HTTP_NGROK_ENABLED),
+        httpNgrokAuthToken: emptyToUndefined(env.MCP_HTTP_NGROK_AUTH_TOKEN),
     });
     if (!parsed.success) {
         const messages = parsed.error.issues.map((issue) => issue.message);
