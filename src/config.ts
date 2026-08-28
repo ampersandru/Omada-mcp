@@ -382,10 +382,6 @@ const envSchema = z
         message: 'MCP_SERVER_USE_HTTP requires MCP_UNSAFE_ENABLE_HTTP=true. HTTP transport is intentionally unsupported for the safe baseline.',
         path: ['unsafeEnableHttp'],
     })
-    .refine((data) => !data.useHttp || !data.httpBindAddr || isLoopbackBindAddress(data.httpBindAddr), {
-        message: 'HTTP transport is only allowed on loopback addresses (127.0.0.1 or ::1) in the safe baseline.',
-        path: ['httpBindAddr'],
-    })
     .refine(
         (data) => {
             // Validate httpBindAddr if provided
@@ -541,6 +537,11 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Environ
     }
     if (parsed.data.useHttp) {
         warnings.push('HTTP transport is enabled with explicit unsafe acknowledgement. The supported production baseline remains stdio only.');
+        if (parsed.data.httpBindAddr && !isLoopbackBindAddress(parsed.data.httpBindAddr)) {
+            warnings.push(
+                `HTTP transport is bound to non-loopback address (${parsed.data.httpBindAddr}). Ensure access is restricted at network level.`
+            );
+        }
     }
 
     const effectiveAuthMode: 'web' | 'openapi' =
