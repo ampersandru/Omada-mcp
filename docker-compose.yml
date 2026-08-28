@@ -1,7 +1,6 @@
 services:
   omada-mcp:
     container_name: omada-mcp
-    image: omada-mcp:latest
     build:
       context: .
       dockerfile: Dockerfile
