@@ -1,0 +1,258 @@
+import http from 'node:http';
+import { normalizePath, resolvePort } from '../utils/config-validations.js';
+import { logger } from '../utils/logger.js';
+import { closeAllStreamSessions, handleStreamRequest } from './stream.js';
+const DEFAULT_PORT = 3000;
+const HEALTH_PATH = '/healthz';
+function getRequestUrl(req, fallbackPort) {
+    if (!req.url) {
+        return undefined;
+    }
+    const host = req.headers.host ?? `localhost:${fallbackPort}`;
+    try {
+        return new URL(req.url, `http://${host}`);
+    }
+    catch {
+        return undefined;
+    }
+}
+function sendJson(res, statusCode, body) {
+    const payload = JSON.stringify(body);
+    res.writeHead(statusCode, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+    });
+    res.end(payload);
+}
+function sanitizeHeaders(headers) {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(headers)) {
+        if (value === undefined) {
+            continue;
+        }
+        if (Array.isArray(value)) {
+            sanitized[key] = value.map((entry) => sanitizeHeaderValue(key, entry));
+        }
+        else {
+            sanitized[key] = sanitizeHeaderValue(key, value);
+        }
+    }
+    return sanitized;
+}
+function sanitizeHeaderValue(key, value) {
+    const sanitized = isSensitiveKey(key) ? maskValue(value) : value;
+    return typeof sanitized === 'string' ? sanitized : String(sanitized);
+}
+function sanitizePayload(payload) {
+    if (payload === null || payload === undefined) {
+        return payload;
+    }
+    if (typeof payload === 'string') {
+        return isLikelySensitiveString(payload) ? maskValue(payload) : payload;
+    }
+    if (Array.isArray(payload)) {
+        return payload.map((entry) => sanitizePayload(entry));
+    }
+    if (typeof payload === 'object') {
+        const sanitized = {};
+        for (const [key, value] of Object.entries(payload)) {
+            sanitized[key] = isSensitiveKey(key) ? maskValue(value) : sanitizePayload(value);
+        }
+        return sanitized;
+    }
+    return payload;
+}
+function isSensitiveKey(key) {
+    const normalized = key.toLowerCase();
+    return (normalized.includes('authorization') ||
+        normalized.includes('token') ||
+        normalized.includes('secret') ||
+        normalized.includes('password') ||
+        normalized.includes('cookie') ||
+        normalized.includes('client-id'));
+}
+function isLikelySensitiveString(value) {
+    return value.length > 16 && /[A-Za-z0-9+/=]{16,}/.test(value);
+}
+function maskValue(value) {
+    if (typeof value === 'string') {
+        if (value.length <= 8) {
+            return '********';
+        }
+        return `${value.slice(0, 4)}…${value.slice(-4)}`;
+    }
+    if (Array.isArray(value)) {
+        return value.map(() => '********');
+    }
+    if (typeof value === 'object' && value !== null) {
+        return '[masked-object]';
+    }
+    return '********';
+}
+async function createShutdownHandler(signal, closeHttp, closeSessions) {
+    logger.warn('Received shutdown signal', { signal });
+    try {
+        await closeSessions();
+    }
+    catch (error) {
+        logger.error('Error closing MCP sessions', { error });
+    }
+    try {
+        await closeHttp();
+    }
+    catch (error) {
+        logger.error('Error closing HTTP server', { error });
+    }
+}
+/**
+ * Starts the HTTP server with the Streamable HTTP transport.
+ * Omada credentials are resolved per-connection/session from env vars (always win)
+ * and request headers (x-omada-client-id, x-omada-client-secret, x-omada-omadac-id).
+ */
+export async function startHttpServer(config) {
+    const transport = config.httpTransport;
+    logger.info('Starting HTTP server', { transport });
+    logger.warn('HTTP transport is unsupported for the safe baseline and should only be used in isolated lab environments.');
+    const omadaConfig = {
+        baseUrl: config.baseUrl,
+        authMode: config.authMode,
+        username: config.username,
+        password: config.password,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        omadacId: config.omadacId,
+        siteId: config.siteId,
+        strictSsl: config.strictSsl,
+        requestTimeout: config.requestTimeout,
+    };
+    const port = resolvePort(config.httpPort, DEFAULT_PORT);
+    const host = config.httpBindAddr ?? '127.0.0.1';
+    const endpointPath = normalizePath(config.httpPath ?? '/mcp');
+    const streamSessions = new Map();
+    const httpServer = http.createServer((req, res) => {
+        void (async () => {
+            const url = getRequestUrl(req, port);
+            if (!url) {
+                logger.warn('HTTP request rejected', {
+                    reason: 'invalid-url',
+                    method: req.method,
+                    url: req.url,
+                });
+                sendJson(res, 400, { error: 'Invalid request URL.' });
+                return;
+            }
+            logger.debug('HTTP request headers', {
+                method: req.method,
+                path: url.pathname,
+                headers: sanitizeHeaders(req.headers),
+            });
+            const bodyChunks = [];
+            const shouldCaptureBody = (req.method ?? 'GET').toUpperCase() !== 'GET';
+            if (shouldCaptureBody) {
+                req.on('data', (chunk) => {
+                    const bufferChunk = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+                    bodyChunks.push(bufferChunk);
+                });
+                await new Promise((resolve) => {
+                    req.on('end', () => resolve());
+                });
+            }
+            logger.info('HTTP request received', {
+                method: req.method,
+                path: url.pathname,
+                query: url.search,
+                sessionId: req.headers['mcp-session-id'] ?? undefined,
+            });
+            // Health check endpoint
+            if (config.httpEnableHealthcheck && url.pathname === (config.httpHealthcheckPath ?? HEALTH_PATH)) {
+                logger.debug('Health check request served');
+                sendJson(res, 200, { status: 'ok' });
+                return;
+            }
+            let parsedBody = null;
+            if (shouldCaptureBody && bodyChunks.length > 0) {
+                const rawBody = Buffer.concat(bodyChunks).toString('utf8');
+                if (rawBody.length > 0) {
+                    try {
+                        parsedBody = JSON.parse(rawBody);
+                    }
+                    catch {
+                        parsedBody = rawBody;
+                    }
+                    logger.debug('HTTP request body', {
+                        method: req.method,
+                        path: url.pathname,
+                        length: rawBody.length,
+                        body: sanitizePayload(parsedBody),
+                    });
+                }
+            }
+            try {
+                // Streamable HTTP Transport handling
+                if (url.pathname === endpointPath) {
+                    await handleStreamRequest(config, omadaConfig, req, res, parsedBody, streamSessions);
+                }
+                else {
+                    sendJson(res, 404, { error: 'Not Found' });
+                }
+                logger.info('MCP request handled successfully', {
+                    path: url.pathname,
+                    method: req.method,
+                });
+            }
+            catch (error) {
+                logger.error('Failed to handle MCP HTTP request', { error });
+                if (!res.headersSent) {
+                    sendJson(res, 500, {
+                        jsonrpc: '2.0',
+                        error: { code: -32000, message: 'Internal server error' },
+                        id: null,
+                    });
+                }
+                else {
+                    res.end();
+                }
+            }
+        })();
+    });
+    httpServer.on('clientError', (error, socket) => {
+        logger.error('HTTP client error', { error });
+        socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+    });
+    await new Promise((resolve) => {
+        httpServer.listen(port, host, () => {
+            const displayHost = host === '0.0.0.0' ? 'localhost' : host;
+            logger.info('HTTP server listening', {
+                endpoint: `http://${displayHost}:${port}${endpointPath}`,
+                transport,
+            });
+            if (config.httpEnableHealthcheck) {
+                logger.info('HTTP health check available', {
+                    endpoint: `http://${displayHost}:${port}${config.httpHealthcheckPath ?? HEALTH_PATH}`,
+                });
+            }
+            logger.info('HTTP server ready');
+            resolve();
+        });
+    });
+    if (config.httpNgrokEnabled) {
+        logger.warn('MCP_HTTP_NGROK_ENABLED is ignored in the safe baseline. Public tunnel support is intentionally disabled.');
+    }
+    let shuttingDown = false;
+    const closeHttp = () => new Promise((resolve) => {
+        httpServer.close(() => resolve());
+    });
+    const closeSessions = async () => {
+        await closeAllStreamSessions(streamSessions);
+    };
+    for (const signal of ['SIGINT', 'SIGTERM']) {
+        process.on(signal, () => {
+            if (!shuttingDown) {
+                shuttingDown = true;
+                void createShutdownHandler(signal, closeHttp, closeSessions);
+            }
+        });
+    }
+}
+export { getRequestUrl, sendJson, sanitizeHeaders, sanitizeHeaderValue, sanitizePayload, isSensitiveKey, isLikelySensitiveString, maskValue, createShutdownHandler, };
+//# sourceMappingURL=http.js.map
