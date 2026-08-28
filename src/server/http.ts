@@ -143,9 +143,12 @@ export async function startHttpServer(config: EnvironmentConfig): Promise<void> 
 
     const omadaConfig: OmadaConnectionConfig = {
         baseUrl: config.baseUrl,
-        clientId: config.clientId as string,
-        clientSecret: config.clientSecret as string,
-        omadacId: config.omadacId as string,
+        authMode: config.authMode,
+        username: config.username,
+        password: config.password,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        omadacId: config.omadacId,
         siteId: config.siteId,
         strictSsl: config.strictSsl,
         requestTimeout: config.requestTimeout,

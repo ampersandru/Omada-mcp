@@ -61,14 +61,17 @@ export class RequestHandler {
      */
     public async request<T>(config: AxiosRequestConfig, retry = true, customHeaders?: CustomHeaders): Promise<T> {
         await this.waitForRateWindow();
-        const accessToken = await this.auth.getAccessToken();
+        const authHeaders =
+            typeof this.auth.getAuthHeaders === 'function'
+                ? await this.auth.getAuthHeaders()
+                : { Authorization: `AccessToken=${await this.auth.getAccessToken()}` };
 
         const requestConfig: AxiosRequestConfig = {
             ...config,
             headers: {
                 ...(config.headers ?? {}),
                 ...(customHeaders ?? {}),
-                Authorization: `AccessToken=${accessToken}`,
+                ...authHeaders,
             },
         };
 
@@ -91,6 +94,10 @@ export class RequestHandler {
 
         try {
             const response = await this.http.request<T>(requestConfig);
+            if (response.headers && typeof this.auth.updateCookies === 'function') {
+                this.auth.updateCookies(response.headers['set-cookie'] as string | string[] | undefined);
+            }
+
             logger.info('Omada response', {
                 method,
                 url,
@@ -129,6 +136,10 @@ export class RequestHandler {
             });
 
             if (axios.isAxiosError(error) && error.response) {
+                if (error.response.headers && typeof this.auth.updateCookies === 'function') {
+                    this.auth.updateCookies(error.response.headers['set-cookie'] as string | string[] | undefined);
+                }
+
                 logger.debug('Omada error response payload', {
                     method,
                     url,
@@ -221,7 +232,7 @@ export class RequestHandler {
             return false;
         }
 
-        return [-44106, -44111, -44112, -44113, -44114, -44116].includes(errorCode);
+        return [-44106, -44111, -44112, -44113, -44114, -44116, -30109, -39001, -39002].includes(errorCode);
     }
 
     /**
@@ -237,7 +248,11 @@ export class RequestHandler {
             lowerMsg.includes('access token has expired') ||
             lowerMsg.includes('token has expired') ||
             lowerMsg.includes('token expired') ||
-            lowerMsg.includes('re-initiate the refreshtoken')
+            lowerMsg.includes('re-initiate the refreshtoken') ||
+            lowerMsg.includes('invalid token') ||
+            lowerMsg.includes('token is invalid') ||
+            lowerMsg.includes('session timeout') ||
+            lowerMsg.includes('session has expired')
         );
     }
 
@@ -306,7 +321,9 @@ export class RequestHandler {
             normalized.includes('token') ||
             normalized.includes('secret') ||
             normalized.includes('password') ||
-            normalized.includes('client_id')
+            normalized.includes('client_id') ||
+            normalized.includes('cookie') ||
+            normalized.includes('csrf')
         );
     }
 

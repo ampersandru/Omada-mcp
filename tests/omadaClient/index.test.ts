@@ -126,7 +126,14 @@ describe('OmadaClient aggregator', () => {
         const client = new OmadaClient(baseConfig);
 
         expect(axiosModule.default.create).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'https://controller.local' }));
-        expect(authModule.AuthManager).toHaveBeenCalledWith(axiosModule.axiosInstance, 'client-id', 'secret', 'omadac');
+        expect(authModule.AuthManager).toHaveBeenCalledWith(
+            axiosModule.axiosInstance,
+            expect.objectContaining({
+                clientId: 'client-id',
+                clientSecret: 'secret',
+                omadacId: 'omadac',
+            })
+        );
         expect(requestModule.RequestHandler).toHaveBeenCalled();
         expect(siteModule.SiteOperations).toHaveBeenCalledWith(requestModule.instance, expect.any(Function), 'default-site');
 

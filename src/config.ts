@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { OmadaAuthMode } from './types/index.js';
 import { isLoopbackBindAddress, isValidBindAddress, isValidOrigin } from './utils/config-validations.js';
 
 // ---------------------------------------------------------------------------
@@ -244,6 +245,9 @@ const envSchema = z
 
         // Omada Client Configuration
         baseUrl: z.string().url({ message: 'OMADA_BASE_URL must be a valid URL' }),
+        authMode: z.enum(['auto', 'web', 'openapi']).optional().default('auto'),
+        username: z.string().min(1, 'OMADA_USERNAME must not be empty').optional(),
+        password: z.string().min(1, 'OMADA_PASSWORD must not be empty').optional(),
         clientId: z.string().min(1, 'OMADA_CLIENT_ID must not be empty').optional(),
         clientSecret: z.string().min(1, 'OMADA_CLIENT_SECRET must not be empty').optional(),
         omadacId: z.string().min(1, 'OMADA_OMADAC_ID must not be empty').optional(),
@@ -268,12 +272,112 @@ const envSchema = z
         httpNgrokEnabled: createBooleanStringSchema(false),
         httpNgrokAuthToken: z.string().optional(),
     })
-    .refine((data) => !!data.clientId, { message: 'OMADA_CLIENT_ID is required', path: ['clientId'] })
-    .refine((data) => !!data.clientSecret, {
-        message: 'OMADA_CLIENT_SECRET is required',
-        path: ['clientSecret'],
+    .superRefine((data, ctx) => {
+        const hasWebCreds = Boolean(data.username && data.password);
+        const hasApiCreds = Boolean(data.clientId && data.clientSecret && data.omadacId);
+
+        if (data.authMode === 'web') {
+            if (!data.username) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_USERNAME is required when OMADA_AUTH_MODE=web',
+                    path: ['username'],
+                });
+            }
+            if (!data.password) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_PASSWORD is required when OMADA_AUTH_MODE=web',
+                    path: ['password'],
+                });
+            }
+            return;
+        }
+
+        if (data.authMode === 'openapi') {
+            if (!data.clientId) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_CLIENT_ID is required when OMADA_AUTH_MODE=openapi',
+                    path: ['clientId'],
+                });
+            }
+            if (!data.clientSecret) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_CLIENT_SECRET is required when OMADA_AUTH_MODE=openapi',
+                    path: ['clientSecret'],
+                });
+            }
+            if (!data.omadacId) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_OMADAC_ID is required when OMADA_AUTH_MODE=openapi',
+                    path: ['omadacId'],
+                });
+            }
+            return;
+        }
+
+        // authMode === 'auto'
+        if (hasWebCreds) {
+            return;
+        }
+
+        if (hasApiCreds) {
+            return;
+        }
+
+        if (data.username || data.password) {
+            if (!data.username) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_USERNAME is required for Web authentication',
+                    path: ['username'],
+                });
+            }
+            if (!data.password) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_PASSWORD is required for Web authentication',
+                    path: ['password'],
+                });
+            }
+            return;
+        }
+
+        if (data.clientId || data.clientSecret || data.omadacId) {
+            if (!data.clientId) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_CLIENT_ID is required',
+                    path: ['clientId'],
+                });
+            }
+            if (!data.clientSecret) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_CLIENT_SECRET is required',
+                    path: ['clientSecret'],
+                });
+            }
+            if (!data.omadacId) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'OMADA_OMADAC_ID is required',
+                    path: ['omadacId'],
+                });
+            }
+            return;
+        }
+
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+                'Authentication credentials required: Provide either OMADA_USERNAME and OMADA_PASSWORD (for Fusion Gateway / web login) or OMADA_CLIENT_ID, OMADA_CLIENT_SECRET, and OMADA_OMADAC_ID (for OpenAPI).',
+            path: ['clientId'],
+        });
     })
-    .refine((data) => !!data.omadacId, { message: 'OMADA_OMADAC_ID is required', path: ['omadacId'] })
     .refine((data) => !data.useHttp || data.unsafeEnableHttp, {
         message: 'MCP_SERVER_USE_HTTP requires MCP_UNSAFE_ENABLE_HTTP=true. HTTP transport is intentionally unsupported for the safe baseline.',
         path: ['unsafeEnableHttp'],
@@ -318,13 +422,15 @@ const envSchema = z
 
 /**
  * The resolved Omada connection parameters required to build an OmadaClient.
- * All fields are guaranteed to be present.
  */
 export interface OmadaConnectionConfig {
     baseUrl: string;
-    clientId: string;
-    clientSecret: string;
-    omadacId: string;
+    authMode?: OmadaAuthMode;
+    clientId?: string;
+    clientSecret?: string;
+    username?: string;
+    password?: string;
+    omadacId?: string;
     siteId?: string;
     strictSsl: boolean;
     requestTimeout?: number;
@@ -337,11 +443,12 @@ export interface EnvironmentConfig {
     startupWarnings: string[];
 
     // Omada Client Configuration
-    // baseUrl is always required (from env)
-    // clientId, clientSecret, omadacId remain env-supplied even in legacy HTTP mode
     baseUrl: string;
+    authMode: OmadaAuthMode;
     clientId?: string;
     clientSecret?: string;
+    username?: string;
+    password?: string;
     omadacId?: string;
     siteId?: string;
     strictSsl: boolean;
@@ -374,6 +481,9 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Environ
 
         // Omada Client Configuration
         baseUrl: env.OMADA_BASE_URL,
+        authMode: env.OMADA_AUTH_MODE,
+        username: env.OMADA_USERNAME,
+        password: env.OMADA_PASSWORD,
         clientId: env.OMADA_CLIENT_ID,
         clientSecret: env.OMADA_CLIENT_SECRET,
         omadacId: env.OMADA_OMADAC_ID,
@@ -433,6 +543,13 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Environ
         warnings.push('HTTP transport is enabled with explicit unsafe acknowledgement. The supported production baseline remains stdio only.');
     }
 
+    const effectiveAuthMode: 'web' | 'openapi' =
+        parsed.data.authMode === 'auto' ? (parsed.data.username && parsed.data.password ? 'web' : 'openapi') : parsed.data.authMode;
+
+    if (effectiveAuthMode === 'web') {
+        warnings.push('Using Omada Web Session authentication (username/password mode).');
+    }
+
     return {
         capabilityProfile: parsed.data.capabilityProfile,
         // Tool category filtering
@@ -441,6 +558,9 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Environ
 
         // Omada Client Configuration
         baseUrl: parsed.data.baseUrl.replace(/\/$/, ''),
+        authMode: parsed.data.authMode,
+        username: parsed.data.username,
+        password: parsed.data.password,
         clientId: parsed.data.clientId,
         clientSecret: parsed.data.clientSecret,
         omadacId: parsed.data.omadacId,

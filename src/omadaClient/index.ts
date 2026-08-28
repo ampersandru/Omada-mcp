@@ -81,10 +81,10 @@ export class OmadaClient {
 
     private readonly actionOps: ActionOperations;
 
-    private readonly omadacId: string;
+    private omadacId: string;
 
     constructor(options: OmadaClientOptions) {
-        this.omadacId = options.omadacId;
+        this.omadacId = options.omadacId ?? '';
 
         const axiosOptions: AxiosRequestConfig = {
             baseURL: options.baseUrl,
@@ -102,7 +102,14 @@ export class OmadaClient {
         this.http = axios.create(axiosOptions);
 
         // Initialize operation modules
-        this.auth = new AuthManager(this.http, options.clientId, options.clientSecret, options.omadacId);
+        this.auth = new AuthManager(this.http, {
+            authMode: options.authMode,
+            clientId: options.clientId,
+            clientSecret: options.clientSecret,
+            username: options.username,
+            password: options.password,
+            omadacId: options.omadacId,
+        });
         this.request = new RequestHandler(this.http, this.auth);
         this.siteOps = new SiteOperations(this.request, this.buildOmadaPath.bind(this), options.siteId);
         this.deviceOps = new DeviceOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
@@ -117,6 +124,16 @@ export class OmadaClient {
         this.accountOps = new AccountOperations(this.request, this.buildOmadaPath.bind(this));
         this.scheduleOps = new ScheduleOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
         this.actionOps = new ActionOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
+    }
+
+    /**
+     * Initialize connection and ensure valid session / auto-discover controller ID.
+     */
+    public async init(): Promise<void> {
+        await this.auth.ensureSession();
+        if (!this.omadacId) {
+            this.omadacId = this.auth.getOmadacIdSync();
+        }
     }
 
     // Site operations
@@ -1777,7 +1794,8 @@ export class OmadaClient {
      * @param version - The API version to use (default: 'v1')
      */
     private buildOmadaPath(relativePath: string, version = 'v1'): string {
+        const omadaId = this.auth.getOmadacIdSync() || this.omadacId;
         const normalized = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-        return `/openapi/${version}/${encodeURIComponent(this.omadacId)}${normalized}`;
+        return `/openapi/${version}/${encodeURIComponent(omadaId)}${normalized}`;
     }
 }

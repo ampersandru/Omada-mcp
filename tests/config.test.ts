@@ -58,43 +58,83 @@ describe('config', () => {
             expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
         });
 
-        it('should throw error if OMADA_CLIENT_ID is missing in stdio mode', () => {
+        it('should load valid configuration with username and password (Fusion / web session mode)', () => {
+            const webEnv = {
+                OMADA_BASE_URL: 'https://192.168.1.1',
+                OMADA_USERNAME: 'admin',
+                OMADA_PASSWORD: 'secretpassword',
+                OMADA_STRICT_SSL: 'false',
+            };
+
+            const config = loadConfigFromEnv(webEnv);
+
+            expect(config.baseUrl).toBe('https://192.168.1.1');
+            expect(config.username).toBe('admin');
+            expect(config.password).toBe('secretpassword');
+            expect(config.strictSsl).toBe(false);
+            expect(config.authMode).toBe('auto');
+            expect(config.omadacId).toBeUndefined(); // Auto-discovered at runtime
+        });
+
+        it('should load valid configuration with username, password, and explicit omadacId', () => {
+            const webEnv = {
+                OMADA_BASE_URL: 'https://192.168.1.1',
+                OMADA_USERNAME: 'admin',
+                OMADA_PASSWORD: 'secretpassword',
+                OMADA_OMADAC_ID: 'custom-cid',
+                OMADA_AUTH_MODE: 'web',
+            };
+
+            const config = loadConfigFromEnv(webEnv);
+
+            expect(config.baseUrl).toBe('https://192.168.1.1');
+            expect(config.username).toBe('admin');
+            expect(config.password).toBe('secretpassword');
+            expect(config.omadacId).toBe('custom-cid');
+            expect(config.authMode).toBe('web');
+        });
+
+        it('should throw error if both username/password and client credentials are missing', () => {
+            const emptyEnv = {
+                OMADA_BASE_URL: 'https://omada.example.com',
+            };
+
+            expect(() => loadConfigFromEnv(emptyEnv)).toThrow('Authentication credentials required');
+        });
+
+        it('should throw error if OMADA_AUTH_MODE=web is missing password', () => {
+            const webEnv = {
+                OMADA_BASE_URL: 'https://192.168.1.1',
+                OMADA_AUTH_MODE: 'web',
+                OMADA_USERNAME: 'admin',
+            };
+
+            expect(() => loadConfigFromEnv(webEnv)).toThrow('OMADA_PASSWORD is required when OMADA_AUTH_MODE=web');
+        });
+
+        it('should throw error if OMADA_AUTH_MODE=openapi is missing credentials', () => {
+            const openApiEnv = {
+                OMADA_BASE_URL: 'https://omada.example.com',
+                OMADA_AUTH_MODE: 'openapi',
+                OMADA_CLIENT_ID: 'id',
+            };
+
+            expect(() => loadConfigFromEnv(openApiEnv)).toThrow('OMADA_CLIENT_SECRET is required when OMADA_AUTH_MODE=openapi');
+        });
+
+        it('should throw error if OMADA_CLIENT_ID is missing in openapi mode', () => {
             delete mockEnv.OMADA_CLIENT_ID;
 
             expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
         });
 
-        it('should throw error if OMADA_CLIENT_SECRET is missing in stdio mode', () => {
+        it('should throw error if OMADA_CLIENT_SECRET is missing in openapi mode', () => {
             delete mockEnv.OMADA_CLIENT_SECRET;
 
             expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
         });
 
-        it('should throw error if OMADA_OMADAC_ID is missing in stdio mode', () => {
-            delete mockEnv.OMADA_OMADAC_ID;
-
-            expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
-        });
-
-        it('should still require OMADA_CLIENT_ID in HTTP mode', () => {
-            mockEnv.MCP_SERVER_USE_HTTP = 'true';
-            mockEnv.MCP_UNSAFE_ENABLE_HTTP = 'true';
-            delete mockEnv.OMADA_CLIENT_ID;
-
-            expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
-        });
-
-        it('should still require OMADA_CLIENT_SECRET in HTTP mode', () => {
-            mockEnv.MCP_SERVER_USE_HTTP = 'true';
-            mockEnv.MCP_UNSAFE_ENABLE_HTTP = 'true';
-            delete mockEnv.OMADA_CLIENT_SECRET;
-
-            expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');
-        });
-
-        it('should still require OMADA_OMADAC_ID in HTTP mode', () => {
-            mockEnv.MCP_SERVER_USE_HTTP = 'true';
-            mockEnv.MCP_UNSAFE_ENABLE_HTTP = 'true';
+        it('should throw error if OMADA_OMADAC_ID is missing in openapi mode', () => {
             delete mockEnv.OMADA_OMADAC_ID;
 
             expect(() => loadConfigFromEnv(mockEnv)).toThrow('Invalid environment configuration');

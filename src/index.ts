@@ -34,7 +34,10 @@ async function main(): Promise<void> {
 
     logger.info('Loaded Omada configuration', {
         baseUrl: config.baseUrl,
-        omadacId: config.omadacId,
+        authMode: config.authMode,
+        username: config.username ? 'configured' : undefined,
+        clientId: config.clientId ? 'configured' : undefined,
+        omadacId: config.omadacId ?? 'auto-detect',
         siteId: config.siteId ?? null,
         strictSsl: config.strictSsl,
         requestTimeout: config.requestTimeout ?? null,
@@ -44,17 +47,22 @@ async function main(): Promise<void> {
     if (config.useHttp) {
         await startHttpServer(config);
     } else {
-        // In stdio mode, the three credential fields are validated as required by loadConfigFromEnv
         const omadaConfig: OmadaConnectionConfig = {
             baseUrl: config.baseUrl,
-            clientId: config.clientId as string,
-            clientSecret: config.clientSecret as string,
-            omadacId: config.omadacId as string,
+            authMode: config.authMode,
+            username: config.username,
+            password: config.password,
+            clientId: config.clientId,
+            clientSecret: config.clientSecret,
+            omadacId: config.omadacId,
             siteId: config.siteId,
             strictSsl: config.strictSsl,
             requestTimeout: config.requestTimeout,
         };
         const client = new OmadaClient(omadaConfig);
+        if (typeof client.init === 'function') {
+            await client.init();
+        }
         await startStdioServer(client, config.toolCategories);
     }
 }

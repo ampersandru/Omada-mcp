@@ -42,7 +42,7 @@ describe('src/index main entry', () => {
         startStdioServer = vi.fn(async () => undefined);
         loadConfigFromEnv = vi.fn();
         OmadaClient = vi.fn(function OmadaClientMock(config: Record<string, unknown>) {
-            return { client: 'instance', config };
+            return { client: 'instance', config, init: vi.fn(async () => undefined) };
         });
         stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 

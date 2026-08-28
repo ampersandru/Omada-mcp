@@ -26,6 +26,7 @@ Security-focused MCP server for TP-Link Omada Open API workflows. This Docker-or
 
 3. Add the server entry:
 
+   **For Fusion 2.5G Gateways & local controllers without API keys (Username & Password):**
    ```json
    {
      "mcpServers": {
@@ -35,7 +36,28 @@ Security-focused MCP server for TP-Link Omada Open API workflows. This Docker-or
            "run",
            "-i",
            "--rm",
-           "-e", "OMADA_BASE_URL=https://your-omada-controller.local",
+           "-e", "OMADA_BASE_URL=https://192.168.1.1",
+           "-e", "OMADA_USERNAME=admin",
+           "-e", "OMADA_PASSWORD=your-password",
+           "-e", "OMADA_STRICT_SSL=false",
+           "ghcr.io/gaspareduard/omada-mcp:latest"
+         ]
+       }
+     }
+   }
+   ```
+
+   **For Cloud or OpenAPI-enabled Controllers (API Keys / OAuth):**
+   ```json
+   {
+     "mcpServers": {
+       "safe-omada": {
+         "command": "docker",
+         "args": [
+           "run",
+           "-i",
+           "--rm",
+           "-e", "OMADA_BASE_URL=https://your-omada-controller.local:8043",
            "-e", "OMADA_CLIENT_ID=your-client-id",
            "-e", "OMADA_CLIENT_SECRET=your-client-secret",
            "-e", "OMADA_OMADAC_ID=your-omadac-id",
@@ -60,16 +82,24 @@ docker run --rm -it \
 
 ## Configuration
 
-### Required Omada Variables
+### Authentication Variables
+
+Provide **either** Username/Password credentials (recommended for Fusion 2.5G Gateways) **or** OpenAPI OAuth credentials:
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `OMADA_BASE_URL` | Yes | - | Base URL of the Omada controller |
-| `OMADA_CLIENT_ID` | Yes | - | OAuth client ID from Omada Platform Integration |
-| `OMADA_CLIENT_SECRET` | Yes | - | OAuth client secret |
-| `OMADA_OMADAC_ID` | Yes | - | Omada controller ID (`omadacId`) |
+| `OMADA_BASE_URL` | Yes | - | Base URL of the Omada controller or Fusion Gateway (e.g. `https://192.168.1.1` or `https://controller.local:8043`) |
+| `OMADA_AUTH_MODE` | No | `auto` | `auto`, `web` (username/password), or `openapi` (OAuth client credentials) |
+| **Web Session (Fusion / Local)** | | | |
+| `OMADA_USERNAME` | For web | - | Username for router/controller web UI login |
+| `OMADA_PASSWORD` | For web | - | Password for router/controller web UI login |
+| **OpenAPI OAuth (Cloud / Local)** | | | |
+| `OMADA_CLIENT_ID` | For openapi | - | OAuth client ID from Omada Platform Integration |
+| `OMADA_CLIENT_SECRET` | For openapi | - | OAuth client secret |
+| **Common Settings** | | | |
+| `OMADA_OMADAC_ID` | OpenAPI only | auto-detect (web) | Omada controller ID (`omadacId`). Required for OpenAPI; auto-detected via `/api/info` in web mode |
 | `OMADA_SITE_ID` | No | - | Optional default site ID |
-| `OMADA_STRICT_SSL` | No | `true` | Enforce TLS certificate validation |
+| `OMADA_STRICT_SSL` | No | `true` | Enforce TLS certificate validation (set `false` for self-signed certs on Fusion gateways) |
 | `OMADA_TIMEOUT` | No | `30000` | HTTP timeout in milliseconds |
 
 ### Capability and Logging
