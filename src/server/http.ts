@@ -136,12 +136,12 @@ async function createShutdownHandler(signal: NodeJS.Signals, closeHttp: () => Pr
  * Omada credentials are resolved per-connection/session from env vars (always win)
  * and request headers (x-omada-client-id, x-omada-client-secret, x-omada-omadac-id).
  */
-export async function startHttpServer(config: EnvironmentConfig): Promise<void> {
+export async function startHttpServer(config: EnvironmentConfig, preconfiguredOmadaConfig?: OmadaConnectionConfig): Promise<void> {
     const transport = config.httpTransport;
     logger.info('Starting HTTP server', { transport });
     logger.warn('HTTP transport is unsupported for the safe baseline and should only be used in isolated lab environments.');
 
-    const omadaConfig: OmadaConnectionConfig = {
+    const omadaConfig: OmadaConnectionConfig = preconfiguredOmadaConfig ?? {
         baseUrl: config.baseUrl,
         authMode: config.authMode,
         username: config.username,

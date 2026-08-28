@@ -1,5 +1,6 @@
 import https from 'node:https';
 import axios from 'axios';
+import { logger } from '../utils/logger.js';
 import { AccountOperations } from './account.js';
 import { ActionOperations } from './actions.js';
 import { AuthManager } from './auth.js';
@@ -75,13 +76,39 @@ export class OmadaClient {
         this.scheduleOps = new ScheduleOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
         this.actionOps = new ActionOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
     }
+    getDefaultSiteId() {
+        return this.siteOps.getDefaultSiteId();
+    }
+    getOmadacId() {
+        return this.omadacId;
+    }
     /**
-     * Initialize connection and ensure valid session / auto-discover controller ID.
+     * Initialize connection and ensure valid session / auto-discover controller ID and default site ID.
      */
     async init() {
         await this.auth.ensureSession();
         if (!this.omadacId) {
             this.omadacId = this.auth.getOmadacIdSync();
+        }
+        if (!this.siteOps.getDefaultSiteId() || this.siteOps.getDefaultSiteId()?.toLowerCase() === 'default') {
+            try {
+                const sites = await this.siteOps.listSites();
+                if (sites && sites.length > 0) {
+                    const defaultSite = sites.find((s) => s.siteId === 'Default' || s.name === 'Default') ?? sites[0];
+                    if (defaultSite?.siteId) {
+                        this.siteOps.setDefaultSiteId(defaultSite.siteId);
+                        logger.info('Auto-detected default Omada Site ID', {
+                            siteId: defaultSite.siteId,
+                            siteName: defaultSite.name,
+                        });
+                    }
+                }
+            }
+            catch (err) {
+                logger.warn('Could not auto-detect default Site ID from controller', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
         }
     }
     // Site operations

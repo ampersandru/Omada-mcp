@@ -152,6 +152,13 @@ export async function handleStreamRequest(
     const isNewSession = !state;
     if (!state) {
         const client = new OmadaClient(omadaConfig);
+        if (typeof client.init === 'function') {
+            try {
+                await client.init();
+            } catch (error) {
+                logger.warn('Failed to init OmadaClient in stream session', { error });
+            }
+        }
 
         let pendingState: StreamTransportState;
         const lifecycleHooks: StreamLifecycleHooks = {

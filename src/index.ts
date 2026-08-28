@@ -44,21 +44,39 @@ async function main(): Promise<void> {
         capabilityProfile: config.capabilityProfile,
     });
 
+    const omadaConfig: OmadaConnectionConfig = {
+        baseUrl: config.baseUrl,
+        authMode: config.authMode,
+        username: config.username,
+        password: config.password,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        omadacId: config.omadacId,
+        siteId: config.siteId,
+        strictSsl: config.strictSsl,
+        requestTimeout: config.requestTimeout,
+    };
+
     if (config.useHttp) {
-        await startHttpServer(config);
+        // Pre-initialize to auto-detect CID and default siteId if not explicitly provided
+        const probeClient = new OmadaClient(omadaConfig);
+        if (typeof probeClient.init === 'function') {
+            try {
+                await probeClient.init();
+                if (!omadaConfig.omadacId && probeClient.getOmadacId()) {
+                    omadaConfig.omadacId = probeClient.getOmadacId();
+                }
+                if (!omadaConfig.siteId && probeClient.getDefaultSiteId()) {
+                    omadaConfig.siteId = probeClient.getDefaultSiteId();
+                }
+            } catch (err) {
+                logger.warn('Initial Omada probe failed', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        await startHttpServer(config, omadaConfig);
     } else {
-        const omadaConfig: OmadaConnectionConfig = {
-            baseUrl: config.baseUrl,
-            authMode: config.authMode,
-            username: config.username,
-            password: config.password,
-            clientId: config.clientId,
-            clientSecret: config.clientSecret,
-            omadacId: config.omadacId,
-            siteId: config.siteId,
-            strictSsl: config.strictSsl,
-            requestTimeout: config.requestTimeout,
-        };
         const client = new OmadaClient(omadaConfig);
         if (typeof client.init === 'function') {
             await client.init();

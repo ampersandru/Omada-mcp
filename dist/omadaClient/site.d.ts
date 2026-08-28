@@ -6,14 +6,17 @@ import type { RequestHandler } from './request.js';
 export declare class SiteOperations {
     private readonly request;
     private readonly buildPath;
-    private readonly defaultSiteId?;
-    constructor(request: RequestHandler, buildPath: (path: string) => string, defaultSiteId?: string | undefined);
+    private defaultSiteId?;
+    constructor(request: RequestHandler, buildPath: (path: string) => string, defaultSiteId?: string);
+    getDefaultSiteId(): string | undefined;
+    setDefaultSiteId(siteId: string): void;
     /**
      * List all sites accessible to the authenticated user.
      */
     listSites(customHeaders?: CustomHeaders): Promise<OmadaSiteSummary[]>;
     /**
      * Resolve a site ID from the parameter or default configuration.
+     * Maps 'Default' / 'default' to configured/discovered hex site ID if available.
      * @throws {Error} If no site ID is available
      */
     resolveSiteId(siteId?: string): string;

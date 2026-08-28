@@ -6,11 +6,23 @@ import type { RequestHandler } from './request.js';
  * Site-related operations for the Omada API.
  */
 export class SiteOperations {
+    private defaultSiteId?: string;
+
     constructor(
         private readonly request: RequestHandler,
         private readonly buildPath: (path: string) => string,
-        private readonly defaultSiteId?: string
-    ) {}
+        defaultSiteId?: string
+    ) {
+        this.defaultSiteId = defaultSiteId;
+    }
+
+    public getDefaultSiteId(): string | undefined {
+        return this.defaultSiteId;
+    }
+
+    public setDefaultSiteId(siteId: string): void {
+        this.defaultSiteId = siteId;
+    }
 
     /**
      * List all sites accessible to the authenticated user.
@@ -21,15 +33,20 @@ export class SiteOperations {
 
     /**
      * Resolve a site ID from the parameter or default configuration.
+     * Maps 'Default' / 'default' to configured/discovered hex site ID if available.
      * @throws {Error} If no site ID is available
      */
     public resolveSiteId(siteId?: string): string {
-        if (siteId) {
+        if (siteId && siteId.toLowerCase() !== 'default') {
             return siteId;
         }
 
         if (this.defaultSiteId) {
             return this.defaultSiteId;
+        }
+
+        if (siteId) {
+            return siteId;
         }
 
         throw new Error('A site id must be provided either in the environment or as a parameter.');

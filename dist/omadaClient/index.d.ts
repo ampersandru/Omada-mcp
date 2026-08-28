@@ -29,8 +29,10 @@ export declare class OmadaClient {
     private readonly actionOps;
     private omadacId;
     constructor(options: OmadaClientOptions);
+    getDefaultSiteId(): string | undefined;
+    getOmadacId(): string;
     /**
-     * Initialize connection and ensure valid session / auto-discover controller ID.
+     * Initialize connection and ensure valid session / auto-discover controller ID and default site ID.
      */
     init(): Promise<void>;
     listSites(customHeaders?: CustomHeaders): Promise<OmadaSiteSummary[]>;

@@ -70,13 +70,23 @@ describe('omadaClient/site', () => {
                 expect(resolved).toBe('default-site');
             });
 
-            it('should handle empty string parameter', () => {
-                const siteOps = new SiteOperations(mockRequest, buildPath, 'default-site');
+            it('should map Default or default to defaultSiteId if set', () => {
+                const siteOps = new SiteOperations(mockRequest, buildPath, '69ec0444f6270f2899dcf80a');
+                expect(siteOps.resolveSiteId('Default')).toBe('69ec0444f6270f2899dcf80a');
+                expect(siteOps.resolveSiteId('default')).toBe('69ec0444f6270f2899dcf80a');
+            });
 
-                // Empty string is falsy, so should use default
-                const resolved = siteOps.resolveSiteId('');
+            it('should support getter and setter for defaultSiteId', () => {
+                const siteOps = new SiteOperations(mockRequest, buildPath);
+                expect(siteOps.getDefaultSiteId()).toBeUndefined();
+                siteOps.setDefaultSiteId('new-site-id');
+                expect(siteOps.getDefaultSiteId()).toBe('new-site-id');
+                expect(siteOps.resolveSiteId()).toBe('new-site-id');
+            });
 
-                expect(resolved).toBe('default-site');
+            it('should return Default if defaultSiteId is not set and Default is passed', () => {
+                const siteOps = new SiteOperations(mockRequest, buildPath);
+                expect(siteOps.resolveSiteId('Default')).toBe('Default');
             });
         });
 

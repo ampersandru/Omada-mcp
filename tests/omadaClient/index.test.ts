@@ -5,8 +5,14 @@ import type { EnvironmentConfig } from '../../src/config.js';
 type FnMap = Record<string, ReturnType<typeof vi.fn>>;
 
 const siteModule = vi.hoisted(() => {
-    const instance: FnMap & { resolveSiteId?: ReturnType<typeof vi.fn> } = {
-        listSites: vi.fn().mockResolvedValue([{ id: 'site-1' }]),
+    const instance: FnMap & {
+        resolveSiteId?: ReturnType<typeof vi.fn>;
+        getDefaultSiteId?: ReturnType<typeof vi.fn>;
+        setDefaultSiteId?: ReturnType<typeof vi.fn>;
+    } = {
+        listSites: vi.fn().mockResolvedValue([{ siteId: 'discovered-site', name: 'Default' }]),
+        getDefaultSiteId: vi.fn().mockReturnValue(undefined),
+        setDefaultSiteId: vi.fn(),
     };
     instance.resolveSiteId = vi.fn().mockReturnValue('resolved-site');
     const SiteOperations = vi.fn(function () {
@@ -78,11 +84,16 @@ const requestModule = vi.hoisted(() => {
     return { instance, RequestHandler };
 });
 
-const authModule = vi.hoisted(() => ({
-    AuthManager: vi.fn(function () {
-        return {};
-    }),
-}));
+const authModule = vi.hoisted(() => {
+    const instance = {
+        ensureSession: vi.fn().mockResolvedValue(undefined),
+        getOmadacIdSync: vi.fn().mockReturnValue('omadac'),
+    };
+    const AuthManager = vi.fn(function () {
+        return instance;
+    });
+    return { instance, AuthManager };
+});
 
 const axiosModule = vi.hoisted(() => {
     const axiosInstance = { interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } };
@@ -137,7 +148,7 @@ describe('OmadaClient aggregator', () => {
         expect(requestModule.RequestHandler).toHaveBeenCalled();
         expect(siteModule.SiteOperations).toHaveBeenCalledWith(requestModule.instance, expect.any(Function), 'default-site');
 
-        await expect(client.listSites()).resolves.toEqual([{ id: 'site-1' }]);
+        await expect(client.listSites()).resolves.toEqual([{ siteId: 'discovered-site', name: 'Default' }]);
         await expect(client.listDevices('s1')).resolves.toEqual([{ id: 'device-1' }]);
         await expect(client.getDevice('dev', 's1')).resolves.toEqual({ id: 'device-1' });
         await expect(client.getSwitchStackDetail('stack', 's1')).resolves.toEqual({ id: 'stack' });
@@ -164,5 +175,12 @@ describe('OmadaClient aggregator', () => {
         expect(clientModule.instance.listClients).toHaveBeenCalledWith('s1', undefined);
         expect(networkModule.instance.getPortForwardingStatus).toHaveBeenCalledWith('user', undefined, 1, 10, undefined);
         expect(requestModule.instance.request).toHaveBeenCalledWith({ url: '/path' }, true, undefined);
+
+        await client.init();
+        expect(authModule.instance.ensureSession).toHaveBeenCalled();
+        expect(siteModule.instance.setDefaultSiteId).toHaveBeenCalledWith('discovered-site');
+        expect(client.getOmadacId()).toBe('omadac');
+        client.getDefaultSiteId();
+        expect(siteModule.instance.getDefaultSiteId).toHaveBeenCalled();
     });
 });

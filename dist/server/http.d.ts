@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
-import type { EnvironmentConfig } from '../config.js';
+import type { EnvironmentConfig, OmadaConnectionConfig } from '../config.js';
 declare function getRequestUrl(req: IncomingMessage, fallbackPort: number): URL | undefined;
 declare function sendJson(res: ServerResponse, statusCode: number, body: unknown): void;
 declare function sanitizeHeaders(headers: IncomingHttpHeaders): Record<string, unknown>;
@@ -14,5 +14,5 @@ declare function createShutdownHandler(signal: NodeJS.Signals, closeHttp: () => 
  * Omada credentials are resolved per-connection/session from env vars (always win)
  * and request headers (x-omada-client-id, x-omada-client-secret, x-omada-omadac-id).
  */
-export declare function startHttpServer(config: EnvironmentConfig): Promise<void>;
+export declare function startHttpServer(config: EnvironmentConfig, preconfiguredOmadaConfig?: OmadaConnectionConfig): Promise<void>;
 export { getRequestUrl, sendJson, sanitizeHeaders, sanitizeHeaderValue, sanitizePayload, isSensitiveKey, isLikelySensitiveString, maskValue, createShutdownHandler, };

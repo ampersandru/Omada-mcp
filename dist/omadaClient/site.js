@@ -10,6 +10,12 @@ export class SiteOperations {
         this.buildPath = buildPath;
         this.defaultSiteId = defaultSiteId;
     }
+    getDefaultSiteId() {
+        return this.defaultSiteId;
+    }
+    setDefaultSiteId(siteId) {
+        this.defaultSiteId = siteId;
+    }
     /**
      * List all sites accessible to the authenticated user.
      */
@@ -18,14 +24,18 @@ export class SiteOperations {
     }
     /**
      * Resolve a site ID from the parameter or default configuration.
+     * Maps 'Default' / 'default' to configured/discovered hex site ID if available.
      * @throws {Error} If no site ID is available
      */
     resolveSiteId(siteId) {
-        if (siteId) {
+        if (siteId && siteId.toLowerCase() !== 'default') {
             return siteId;
         }
         if (this.defaultSiteId) {
             return this.defaultSiteId;
+        }
+        if (siteId) {
+            return siteId;
         }
         throw new Error('A site id must be provided either in the environment or as a parameter.');
     }

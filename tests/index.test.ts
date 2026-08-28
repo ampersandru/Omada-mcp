@@ -42,7 +42,13 @@ describe('src/index main entry', () => {
         startStdioServer = vi.fn(async () => undefined);
         loadConfigFromEnv = vi.fn();
         OmadaClient = vi.fn(function OmadaClientMock(config: Record<string, unknown>) {
-            return { client: 'instance', config, init: vi.fn(async () => undefined) };
+            return {
+                client: 'instance',
+                config,
+                init: vi.fn(async () => undefined),
+                getOmadacId: vi.fn().mockReturnValue('discovered-cid'),
+                getDefaultSiteId: vi.fn().mockReturnValue('discovered-site'),
+            };
         });
         stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
@@ -89,26 +95,73 @@ describe('src/index main entry', () => {
         expect(loggerInfo).toHaveBeenCalledWith('Loaded Omada configuration', expect.objectContaining({ omadacId: 'omada-1' }));
     });
 
-    it('starts HTTP server when enabled', async () => {
-        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: true, logFormat: 'json' });
+    it('starts HTTP server when enabled and passes auto-detected siteId/omadacId', async () => {
+        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: true, logFormat: 'json', omadacId: undefined, siteId: undefined });
 
         await loadEntry();
 
         expect(mockInitLogger).toHaveBeenCalledWith('info', 'json', false);
-        expect(OmadaClient).not.toHaveBeenCalled();
-        expect(startHttpServer).toHaveBeenCalledWith(expect.objectContaining({ useHttp: true }));
+        expect(OmadaClient).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'https://controller.local' }));
+        expect(startHttpServer).toHaveBeenCalledWith(
+            expect.objectContaining({ useHttp: true }),
+            expect.objectContaining({ omadacId: 'discovered-cid', siteId: 'discovered-site' })
+        );
         expect(startStdioServer).not.toHaveBeenCalled();
     });
 
-    it('writes startup failures to stderr and sets exit code', async () => {
-        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: false });
-        const failure = new Error('boom');
-        startStdioServer.mockRejectedValueOnce(failure);
+    it('handles initial probe failure gracefully in HTTP mode', async () => {
+        OmadaClient.mockImplementationOnce(function () {
+            return {
+                init: vi.fn().mockRejectedValue(new Error('probe network error')),
+                getOmadacId: vi.fn(),
+                getDefaultSiteId: vi.fn(),
+            };
+        });
+        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: true });
 
         await loadEntry();
 
-        expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('Failed to start Omada MCP server: boom'));
+        expect(loggerWarn).toHaveBeenCalledWith('Initial Omada probe failed', expect.objectContaining({ error: 'probe network error' }));
+        expect(startHttpServer).toHaveBeenCalled();
+    });
+
+    it('writes non-Error startup failures to stderr and sets exit code', async () => {
+        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: false });
+        startStdioServer.mockRejectedValueOnce('raw-string-failure');
+
+        await loadEntry();
+
+        expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('Failed to start Omada MCP server: raw-string-failure'));
         expect(process.exitCode).toBe(1);
+    });
+
+    it('handles probe error when thrown value is a non-Error string', async () => {
+        OmadaClient.mockImplementationOnce(function () {
+            return {
+                init: vi.fn().mockRejectedValue('string probe error'),
+                getOmadacId: vi.fn(),
+                getDefaultSiteId: vi.fn(),
+            };
+        });
+        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: true });
+
+        await loadEntry();
+
+        expect(loggerWarn).toHaveBeenCalledWith('Initial Omada probe failed', expect.objectContaining({ error: 'string probe error' }));
+        expect(startHttpServer).toHaveBeenCalled();
+    });
+
+    it('handles client when init is not a function', async () => {
+        OmadaClient.mockImplementationOnce(function () {
+            return {
+                client: 'instance',
+            };
+        });
+        loadConfigFromEnv.mockReturnValue({ ...baseConfig, useHttp: false });
+
+        await loadEntry();
+
+        expect(startStdioServer).toHaveBeenCalled();
     });
 
     it('emits startup warnings only after logger is initialized', async () => {

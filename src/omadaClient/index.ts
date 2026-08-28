@@ -22,7 +22,7 @@ import type {
     RateLimitProfile,
     ThreatInfo,
 } from '../types/index.js';
-
+import { logger } from '../utils/logger.js';
 import { AccountOperations } from './account.js';
 import { ActionOperations } from './actions.js';
 import { AuthManager } from './auth.js';
@@ -126,13 +126,40 @@ export class OmadaClient {
         this.actionOps = new ActionOperations(this.request, this.siteOps, this.buildOmadaPath.bind(this));
     }
 
+    public getDefaultSiteId(): string | undefined {
+        return this.siteOps.getDefaultSiteId();
+    }
+
+    public getOmadacId(): string {
+        return this.omadacId;
+    }
+
     /**
-     * Initialize connection and ensure valid session / auto-discover controller ID.
+     * Initialize connection and ensure valid session / auto-discover controller ID and default site ID.
      */
     public async init(): Promise<void> {
         await this.auth.ensureSession();
         if (!this.omadacId) {
             this.omadacId = this.auth.getOmadacIdSync();
+        }
+        if (!this.siteOps.getDefaultSiteId() || this.siteOps.getDefaultSiteId()?.toLowerCase() === 'default') {
+            try {
+                const sites = await this.siteOps.listSites();
+                if (sites && sites.length > 0) {
+                    const defaultSite = sites.find((s) => s.siteId === 'Default' || s.name === 'Default') ?? sites[0];
+                    if (defaultSite?.siteId) {
+                        this.siteOps.setDefaultSiteId(defaultSite.siteId);
+                        logger.info('Auto-detected default Omada Site ID', {
+                            siteId: defaultSite.siteId,
+                            siteName: defaultSite.name,
+                        });
+                    }
+                }
+            } catch (err) {
+                logger.warn('Could not auto-detect default Site ID from controller', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
         }
     }
 
